@@ -1,23 +1,33 @@
 import socketserver
+import threading
 
 
-class TCPHandler(socketserver.BaseRequestHandler):
-    """
-    The request handler class for server.
-
-    It is instantiated once per connection to the server, and must
-    override the handle() method to implement communication to the
-    client.
-    """
+class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
 
     def handle(self):
-        self.data = self.request.recv(1024).strip()
-        print("{} wrote:".format(self.client_address[0]))
-        print(self.data)
-        self.request.sendall(self.data.upper())
+        data = str(self.request.recv(1024), 'ascii')
+        cur_thread = threading.current_thread()
+        response = bytes("{}: {}".format(cur_thread.name, data), 'ascii')
+        self.request.sendall(response)
+
+
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    pass
 
 
 if __name__ == "__main__":
-    HOST, PORT = "0.0.0.0", 9999
-    with socketserver.TCPServer((HOST, PORT), TCPHandler) as server:
-        server.serve_forever()
+    # Port 0 means to select an arbitrary unused port
+    HOST, PORT = "localhost", 0
+
+    server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
+    with server:
+        ip, port = server.server_address
+        print(ip, port)
+
+        # Start a thread with the server -- that thread will then start one
+        # more thread for each request
+        server_thread = threading.Thread(target=server.serve_forever)
+        # Exit the server thread when the main thread terminates
+        server_thread.daemon = True
+        server_thread.start()
+        print("Server loop running in thread:", server_thread.name)
